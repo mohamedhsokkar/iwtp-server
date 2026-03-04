@@ -147,7 +147,7 @@ const getCurrentUser = async (req, res) => {
 
 router.get("/", validateAccessToken, getCurrentUser);
 router.get("/me", validateAccessToken, getCurrentUser);
-router.get("/all", validateAccessToken, requireMinimumRole("engineer"), async (req, res) => {
+router.get("/all", validateAccessToken, requireMinimumRole("admin"), async (req, res) => {
     try {
         const users = await User.find().select("-password");
         res.json(users);
@@ -156,5 +156,85 @@ router.get("/all", validateAccessToken, requireMinimumRole("engineer"), async (r
         res.status(500).send(err.message);
     }
 });
+
+router.post(
+    "/admin-create",
+    validateAccessToken,
+    requireMinimumRole("admin"),
+    check("name", "Name is required").notEmpty(),
+    check("email", "Please incllude a valid email").isEmail(),
+    check("password", "Please choose a password with at least 6 characters").isLength({ min: 6 }),
+    check("nationalID", "National ID is numbers only").isNumeric(),
+    check("nationalID", "National ID consists of 14 numbers").isLength({ min: 14, max: 14 }),
+    check("role", `Role must be one of: ${USER_ROLES.join(", ")}`).isIn(USER_ROLES),
+    async (req, res) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { name, email, password, nationalID, role } = req.body;
+
+        try {
+            const existingUser = await User.findOne({ email });
+            if (existingUser) {
+                return res.status(400).json({ error: [{ msg: "user already exist" }] });
+            }
+
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(password, salt);
+
+            const user = new User({
+                name,
+                email,
+                password: hashedPassword,
+                nationalID,
+                role
+            });
+
+            await user.save();
+            return res.status(201).json({ msg: "User created successfully" });
+        } catch (err) {
+            console.error(err.message);
+            return res.status(500).send(err.message);
+        }
+    }
+);
+
+router.put(
+    "/change-password",
+    validateAccessToken,
+    check("currentPassword", "Current password is required").notEmpty(),
+    check("newPassword", "New password must be at least 6 characters").isLength({ min: 6 }),
+    async (req, res) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { currentPassword, newPassword } = req.body;
+
+        try {
+            const user = await User.findById(req.user.id);
+            if (!user) {
+                return res.status(404).json({ msg: "User not found" });
+            }
+
+            const isMatch = await bcrypt.compare(currentPassword, user.password);
+            if (!isMatch) {
+                return res.status(400).json({ error: [{ msg: "Current password is incorrect" }] });
+            }
+
+            const salt = await bcrypt.genSalt(10);
+            user.password = await bcrypt.hash(newPassword, salt);
+            await user.save();
+
+            return res.json({ msg: "Password updated successfully" });
+        } catch (err) {
+            console.error(err.message);
+            return res.status(500).send(err.message);
+        }
+    }
+);
 
 export default router;
