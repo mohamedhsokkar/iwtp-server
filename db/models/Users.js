@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+export const USER_ROLES = ["admin", "engineer", "operator", "chemist"];
+
 const UserSchema = new mongoose.Schema({
     name: {
         type: String,
@@ -22,6 +24,12 @@ const UserSchema = new mongoose.Schema({
         type: Number,
         required: false,
         unique: true
+    },
+    role: {
+        type: String,
+        enum: USER_ROLES,
+        default: "operator",
+        required: true
     }
 });
 

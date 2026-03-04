@@ -1,10 +1,11 @@
 import express from "express";
 const router = express.Router();
 import { check, validationResult } from "express-validator";
-import User from "../db/models/Users.js";
+import User, { USER_ROLES } from "../db/models/Users.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { validateAccessToken } from "./utils/index.js";
+import { requireMinimumRole } from "./utils/roles.js";
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -32,12 +33,13 @@ router.post("/register",
     check("password", "Please choose a password with at least 6 characters").isLength({ min: 6 }),
     check("nationalID", "National ID is numbers only").isNumeric(),
     check("nationalID", "National ID consists of 14 numbers").isLength({ min: 14, max: 14}),
+    check("role", `Role must be one of: ${USER_ROLES.join(", ")}`).optional().isIn(USER_ROLES),
     async (req, res) => {
         const errors = validationResult(req);
         if(!errors.isEmpty()) {
             return res.status(400).json({errors: errors.array()})
         }
-        const { name, email, password, nationalID } = req.body;
+        const { name, email, password, nationalID, role } = req.body;
         
         try {
             let user = await User.findOne({email});
@@ -49,7 +51,8 @@ router.post("/register",
                 name,
                 email,
                 password,
-                nationalID
+                nationalID,
+                role: role ?? "operator"
             });
 
             const salt = await bcrypt.genSalt(10);
@@ -58,7 +61,8 @@ router.post("/register",
 
             const payload = {
                 user: {
-                    id: user.id
+                    id: user.id,
+                    role: user.role
                 }
             }
 
@@ -105,7 +109,8 @@ router.post("/login",
             }
             const payload = {
                 user: {
-                    id: user.id
+                    id: user.id,
+                    role: user.role
                 }
             }
 
@@ -130,7 +135,7 @@ Desc: takes a token and return user information
 Private
 */
 
-router.get("/", validateAccessToken, async (req, res) => {
+const getCurrentUser = async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select("-password");
         res.json(user)
@@ -138,6 +143,18 @@ router.get("/", validateAccessToken, async (req, res) => {
         console.log(err.message);
         res.status(500).send(err.message)
     }
-})
+};
+
+router.get("/", validateAccessToken, getCurrentUser);
+router.get("/me", validateAccessToken, getCurrentUser);
+router.get("/all", validateAccessToken, requireMinimumRole("engineer"), async (req, res) => {
+    try {
+        const users = await User.find().select("-password");
+        res.json(users);
+    } catch (err) {
+        console.log(err.message);
+        res.status(500).send(err.message);
+    }
+});
 
 export default router;
