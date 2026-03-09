@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import { connectLocalDB, connectOnlineDB } from "./db/db.js";
 import users from "./routes/users.js";
+import issues from "./routes/issues.js";
 
 //import users from "./routes/users.js";
 
@@ -15,6 +16,7 @@ app.use(express.json());
 app.use(cors());
 
 app.use("/api/users", users);
+app.use("/api/issues", issues);
 //app.use("/api/data", data);
 
 connectLocalDB();

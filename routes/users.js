@@ -5,7 +5,7 @@ import User, { USER_ROLES } from "../db/models/Users.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { validateAccessToken } from "./utils/index.js";
-import { requireMinimumRole } from "./utils/roles.js";
+import { requirePermission } from "./utils/roles.js";
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -147,7 +147,7 @@ const getCurrentUser = async (req, res) => {
 
 router.get("/", validateAccessToken, getCurrentUser);
 router.get("/me", validateAccessToken, getCurrentUser);
-router.get("/all", validateAccessToken, requireMinimumRole("admin"), async (req, res) => {
+router.get("/all", validateAccessToken, requirePermission("users.manage"), async (req, res) => {
     try {
         const users = await User.find().select("-password");
         res.json(users);
@@ -160,7 +160,7 @@ router.get("/all", validateAccessToken, requireMinimumRole("admin"), async (req,
 router.post(
     "/admin-create",
     validateAccessToken,
-    requireMinimumRole("admin"),
+    requirePermission("users.manage"),
     check("name", "Name is required").notEmpty(),
     check("email", "Please incllude a valid email").isEmail(),
     check("password", "Please choose a password with at least 6 characters").isLength({ min: 6 }),
