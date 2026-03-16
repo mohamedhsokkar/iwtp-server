@@ -7,10 +7,16 @@ const UserSchema = new mongoose.Schema({
         type: String,
         required: false
     },
+    workID:{
+        type: Number,
+        required: true,
+        unique: true
+    },
     email :{
         type: String,
         required: false,
-        unique: true
+        unique: true,
+        sparse: true
     },
     password: {
         type: String,
@@ -23,7 +29,8 @@ const UserSchema = new mongoose.Schema({
     nationalID: {
         type: Number,
         required: false,
-        unique: true
+        unique: true,
+        sparse: true
     },
     role: {
         type: String,

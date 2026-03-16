@@ -29,20 +29,26 @@ public
 
 router.post("/register",
     check("name", "Name is required").notEmpty(),
-    check("email", "Please incllude a valid email").isEmail(),
+    check("workID", "Work ID must be numeric").isNumeric(),
     check("password", "Please choose a password with at least 6 characters").isLength({ min: 6 }),
-    check("nationalID", "National ID is numbers only").isNumeric(),
-    check("nationalID", "National ID consists of 14 numbers").isLength({ min: 14, max: 14}),
+    check("email", "Please include a valid email").optional({ values: "falsy" }).isEmail(),
+    check("nationalID", "National ID is numbers only").optional({ values: "falsy" }).isNumeric(),
+    check("nationalID", "National ID consists of 14 numbers").optional({ values: "falsy" }).isLength({ min: 14, max: 14}),
     check("role", `Role must be one of: ${USER_ROLES.join(", ")}`).optional().isIn(USER_ROLES),
     async (req, res) => {
         const errors = validationResult(req);
         if(!errors.isEmpty()) {
             return res.status(400).json({errors: errors.array()})
         }
-        const { name, email, password, nationalID, role } = req.body;
+        const { name, email, workID, password, nationalID, role } = req.body;
         
         try {
-            let user = await User.findOne({email});
+            const duplicateChecks = [{ workID: Number(workID) }];
+            if (email) {
+                duplicateChecks.push({ email });
+            }
+
+            let user = await User.findOne({ $or: duplicateChecks });
             if(user) {
                 return res.status(400).json({error: [{msg: "user already exist"}]})
             }
@@ -50,6 +56,7 @@ router.post("/register",
             user = new User({
                 name,
                 email,
+                workID: Number(workID),
                 password,
                 nationalID,
                 role: role ?? "operator"
@@ -88,17 +95,17 @@ public
 */
 
 router.post("/login",
-    check("email", "Please incllude a valid email").isEmail(),
+    check("workID", "Work ID must be numeric").isNumeric(),
     check("password", "Please choose a password with at least 6 characters").isLength({ min: 6 }),
     async (req, res) => {
         const errors = validationResult(req);
         if(!errors.isEmpty()) {
             return res.status(400).json({errors: errors.array()})
         }
-        const { email, password } = req.body;
+        const { workID, password } = req.body;
         
         try {
-            let user = await User.findOne({email});
+            let user = await User.findOne({ workID: Number(workID) });
             if(!user) {
                 return res.status(400).json({error: [{msg: "Invalid credentials"}]})
             }
@@ -162,10 +169,11 @@ router.post(
     validateAccessToken,
     requirePermission("users.manage"),
     check("name", "Name is required").notEmpty(),
-    check("email", "Please incllude a valid email").isEmail(),
+    check("workID", "Work ID must be numeric").isNumeric(),
     check("password", "Please choose a password with at least 6 characters").isLength({ min: 6 }),
-    check("nationalID", "National ID is numbers only").isNumeric(),
-    check("nationalID", "National ID consists of 14 numbers").isLength({ min: 14, max: 14 }),
+    check("email", "Please incllude a valid email").optional({ values: "falsy" }).isEmail(),
+    check("nationalID", "National ID is numbers only").optional({ values: "falsy" }).isNumeric(),
+    check("nationalID", "National ID consists of 14 numbers").optional({ values: "falsy" }).isLength({ min: 14, max: 14 }),
     check("role", `Role must be one of: ${USER_ROLES.join(", ")}`).isIn(USER_ROLES),
     async (req, res) => {
         const errors = validationResult(req);
@@ -173,10 +181,15 @@ router.post(
             return res.status(400).json({ errors: errors.array() });
         }
 
-        const { name, email, password, nationalID, role } = req.body;
+        const { name, email, workID, password, nationalID, role } = req.body;
 
         try {
-            const existingUser = await User.findOne({ email });
+            const duplicateChecks = [{ workID: Number(workID) }];
+            if (email) {
+                duplicateChecks.push({ email });
+            }
+
+            const existingUser = await User.findOne({ $or: duplicateChecks });
             if (existingUser) {
                 return res.status(400).json({ error: [{ msg: "user already exist" }] });
             }
@@ -187,6 +200,7 @@ router.post(
             const user = new User({
                 name,
                 email,
+                workID: Number(workID),
                 password: hashedPassword,
                 nationalID,
                 role
