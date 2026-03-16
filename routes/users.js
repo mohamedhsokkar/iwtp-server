@@ -11,6 +11,25 @@ import dotenv from "dotenv";
 dotenv.config();
 const jwtAccessSecret = process.env.JWT_ACCESS_SECRET
 
+const buildDuplicateUserError = (keyPattern = {}) => {
+    if (keyPattern.workID) {
+        return "Work ID already exists";
+    }
+    if (keyPattern.nationalID) {
+        return "National ID already exists";
+    }
+    return "User already exists";
+};
+
+const normalizeOptionalString = (value) => {
+    if (typeof value !== "string") {
+        return value;
+    }
+
+    const trimmed = value.trim();
+    return trimmed === "" ? undefined : trimmed;
+};
+
 
 /*
 get the request body.
@@ -31,7 +50,8 @@ router.post("/register",
     check("name", "Name is required").notEmpty(),
     check("workID", "Work ID must be numeric").isNumeric(),
     check("password", "Please choose a password with at least 6 characters").isLength({ min: 6 }),
-    check("email", "Please include a valid email").optional({ values: "falsy" }).isEmail(),
+    check("mobileNumber", "Mobile number must be numeric").optional({ values: "falsy" }).isNumeric(),
+    check("mobileNumber", "Mobile number must be exactly 11 digits").optional({ values: "falsy" }).isLength({ min: 11, max: 11 }),
     check("nationalID", "National ID is numbers only").optional({ values: "falsy" }).isNumeric(),
     check("nationalID", "National ID consists of 14 numbers").optional({ values: "falsy" }).isLength({ min: 14, max: 14}),
     check("role", `Role must be one of: ${USER_ROLES.join(", ")}`).optional().isIn(USER_ROLES),
@@ -40,25 +60,33 @@ router.post("/register",
         if(!errors.isEmpty()) {
             return res.status(400).json({errors: errors.array()})
         }
-        const { name, email, workID, password, nationalID, role } = req.body;
+        const { name, mobileNumber, workID, password, nationalID, role } = req.body;
+        const normalizedMobileNumber = normalizeOptionalString(mobileNumber);
+        const normalizedNationalID = normalizeOptionalString(nationalID);
         
         try {
             const duplicateChecks = [{ workID: Number(workID) }];
-            if (email) {
-                duplicateChecks.push({ email });
+            if (normalizedNationalID) {
+                duplicateChecks.push({ nationalID: Number(normalizedNationalID) });
             }
 
             let user = await User.findOne({ $or: duplicateChecks });
             if(user) {
-                return res.status(400).json({error: [{msg: "user already exist"}]})
+                if (user.workID === Number(workID)) {
+                    return res.status(400).json({ error: [{ msg: "Work ID already exists" }] });
+                }
+                if (normalizedNationalID && user.nationalID === Number(normalizedNationalID)) {
+                    return res.status(400).json({ error: [{ msg: "National ID already exists" }] });
+                }
+                return res.status(400).json({ error: [{ msg: "User already exists" }] });
             }
 
             user = new User({
                 name,
-                email,
+                mobileNumber: normalizedMobileNumber,
                 workID: Number(workID),
                 password,
-                nationalID,
+                nationalID: normalizedNationalID ? Number(normalizedNationalID) : undefined,
                 role: role ?? "operator"
             });
 
@@ -83,7 +111,10 @@ router.post("/register",
 
         } catch(err) {
             console.error(err.message);
-            res.status(500).send(err.message);
+            if (err?.code === 11000) {
+                return res.status(400).json({ error: [{ msg: buildDuplicateUserError(err.keyPattern) }] });
+            }
+            res.status(500).json({ msg: "Registration failed" });
         }
     }
 )
@@ -171,7 +202,8 @@ router.post(
     check("name", "Name is required").notEmpty(),
     check("workID", "Work ID must be numeric").isNumeric(),
     check("password", "Please choose a password with at least 6 characters").isLength({ min: 6 }),
-    check("email", "Please incllude a valid email").optional({ values: "falsy" }).isEmail(),
+    check("mobileNumber", "Mobile number must be numeric").optional({ values: "falsy" }).isNumeric(),
+    check("mobileNumber", "Mobile number must be exactly 11 digits").optional({ values: "falsy" }).isLength({ min: 11, max: 11 }),
     check("nationalID", "National ID is numbers only").optional({ values: "falsy" }).isNumeric(),
     check("nationalID", "National ID consists of 14 numbers").optional({ values: "falsy" }).isLength({ min: 14, max: 14 }),
     check("role", `Role must be one of: ${USER_ROLES.join(", ")}`).isIn(USER_ROLES),
@@ -181,17 +213,25 @@ router.post(
             return res.status(400).json({ errors: errors.array() });
         }
 
-        const { name, email, workID, password, nationalID, role } = req.body;
+        const { name, mobileNumber, workID, password, nationalID, role } = req.body;
+        const normalizedMobileNumber = normalizeOptionalString(mobileNumber);
+        const normalizedNationalID = normalizeOptionalString(nationalID);
 
         try {
             const duplicateChecks = [{ workID: Number(workID) }];
-            if (email) {
-                duplicateChecks.push({ email });
+            if (normalizedNationalID) {
+                duplicateChecks.push({ nationalID: Number(normalizedNationalID) });
             }
 
             const existingUser = await User.findOne({ $or: duplicateChecks });
             if (existingUser) {
-                return res.status(400).json({ error: [{ msg: "user already exist" }] });
+                if (existingUser.workID === Number(workID)) {
+                    return res.status(400).json({ error: [{ msg: "Work ID already exists" }] });
+                }
+                if (normalizedNationalID && existingUser.nationalID === Number(normalizedNationalID)) {
+                    return res.status(400).json({ error: [{ msg: "National ID already exists" }] });
+                }
+                return res.status(400).json({ error: [{ msg: "User already exists" }] });
             }
 
             const salt = await bcrypt.genSalt(10);
@@ -199,10 +239,10 @@ router.post(
 
             const user = new User({
                 name,
-                email,
+                mobileNumber: normalizedMobileNumber,
                 workID: Number(workID),
                 password: hashedPassword,
-                nationalID,
+                nationalID: normalizedNationalID ? Number(normalizedNationalID) : undefined,
                 role
             });
 
@@ -210,7 +250,10 @@ router.post(
             return res.status(201).json({ msg: "User created successfully" });
         } catch (err) {
             console.error(err.message);
-            return res.status(500).send(err.message);
+            if (err?.code === 11000) {
+                return res.status(400).json({ error: [{ msg: buildDuplicateUserError(err.keyPattern) }] });
+            }
+            return res.status(500).json({ msg: "Failed to create user" });
         }
     }
 );
